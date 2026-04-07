@@ -28,12 +28,15 @@ const contactController = {
         name: groupName,
         owner: req.user.id,
       });
+
       if (!group) return res.status(200).json([]);
 
       const contacts = await Contact.find({
         group: group._id,
+        owner: req.user.id,
         is_deleted: false,
       });
+
       res.status(200).json(contacts);
     } catch (error) {
       res.status(500).json({ error: error.message });
