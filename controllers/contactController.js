@@ -158,6 +158,7 @@ const contactController = {
           $match: {
             owner: new mongoose.Types.ObjectId(req.user.id),
             is_deleted: false,
+            group: { $ne: null },
           },
         },
         { $group: { _id: "$group", count: { $sum: 1 } } },
