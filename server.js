@@ -20,7 +20,7 @@ app.use("/api", routes);
 
 // Route mặc định để kiểm tra server sống hay chết
 app.get("/", (req, res) => {
-  res.json({ message: "Welcome to Contact Management API" });
+  res.json({ message: "Hí nhô, thi lẹ mà đá banhhhh" });
 });
 
 // Xử lý lỗi 404 cho những route không tồn tại
