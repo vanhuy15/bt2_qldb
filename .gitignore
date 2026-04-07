@@ -1,0 +1,15 @@
+# bỏ qua folder chứa thư viện
+node_modules/
+
+# bỏ qua file chứa biến mt
+.env
+
+# bỏ qua các file Excel/CSV test export/import
+*.xlsx
+*.csv
+
+# các file log của hệ thống
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
