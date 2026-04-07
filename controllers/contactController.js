@@ -328,13 +328,13 @@ const contactController = {
     }
   },
 
-  // import danh bạ từ file Excel
+  // import danh bạ từ file Excel-auto create groups
   importContacts: async (req, res) => {
     try {
       if (!req.file) {
-        return res.status(400).json({
-          message: "Vui lòng upload file Excel đính kèm (field name: 'file')",
-        });
+        return res
+          .status(400)
+          .json({ message: "Vui lòng upload file Excel đính kèm" });
       }
 
       const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
@@ -348,24 +348,76 @@ const contactController = {
           .json({ message: "File Excel rỗng, không có dữ liệu" });
       }
 
-      const contactsToInsert = data.map((row) => ({
-        name: row["Họ Tên"] || row["Name"] || row["name"],
-        phone: String(row["Số Điện Thoại"] || row["Phone"] || row["phone"]),
-        email: row["Email"] || row["email"] || "",
-        company: row["Công Ty"] || row["Company"] || row["company"] || "",
-        address: { city: row["Thành Phố"] || row["City"] || "" },
+      // lọc tên và sđt
+      const validRows = data.filter((row) => {
+        const name = row["Họ Tên"] || row["Name"] || row["name"];
+        const phone = row["Số Điện Thoại"] || row["Phone"] || row["phone"];
+        return name && phone && phone !== "undefined";
+      });
+
+      if (validRows.length === 0) {
+        return res.status(400).json({
+          message: "Không tìm thấy dữ liệu hợp lệ (thiếu Tên hoặc SĐT)",
+        });
+      }
+
+      // auto xử lý Group
+      const excelGroupNames = [
+        ...new Set(
+          validRows.map((row) => row["Nhóm"] || row["Group"]).filter(Boolean),
+        ),
+      ];
+
+      // check xem DB có sẵn chưa
+      let existingGroups = await Group.find({
         owner: req.user.id,
-      }));
+        name: { $in: excelGroupNames },
+        is_deleted: false,
+      });
+      let existingGroupNames = existingGroups.map((g) => g.name);
 
-      const validContacts = contactsToInsert.filter(
-        (c) => c.name && c.phone && c.phone !== "undefined",
-      );
+      // lọc ra những Nhóm có trong Excel nhưng CHƯA có trong DB để chuẩn bị tạo mới
+      const groupsToCreate = excelGroupNames
+        .filter((name) => !existingGroupNames.includes(name))
+        .map((name) => ({ name, owner: req.user.id }));
 
-      await Contact.insertMany(validContacts);
+      // tạo các Nhóm mới (nếu có)
+      if (groupsToCreate.length > 0) {
+        const newGroups = await Group.insertMany(groupsToCreate);
+        existingGroups = [...existingGroups, ...newGroups];
+      }
+      const groupMap = {};
+      existingGroups.forEach((g) => {
+        groupMap[g.name] = g._id;
+      });
+
+      // chuẩn bị dữ liệu Contact để Insert
+      const contactsToInsert = validRows.map((row) => {
+        let contact = {
+          name: row["Họ Tên"] || row["Name"] || row["name"],
+          phone: String(row["Số Điện Thoại"] || row["Phone"] || row["phone"]),
+          email: row["Email"] || row["email"] || "",
+          company: row["Công Ty"] || row["Company"] || row["company"] || "",
+          address: { city: row["Thành Phố"] || row["City"] || "" },
+          is_favorite: String(row["Yêu Thích"] || "").toLowerCase() === "có",
+          owner: req.user.id,
+        };
+
+        // nếu file Excel có điền tên Nhóm, tự động móc nối ID Nhóm vào Contact
+        const gName = row["Nhóm"] || row["Group"];
+        if (gName && groupMap[gName]) {
+          contact.group = groupMap[gName];
+        }
+
+        return contact;
+      });
+
+      // lưu toàn bộ Contact vào DB
+      await Contact.insertMany(contactsToInsert);
 
       res.status(200).json({
-        message: `Đã Import thành công ${validContacts.length} liên hệ!`,
-        ignored: data.length - validContacts.length,
+        message: `Đã Import thành công ${contactsToInsert.length} liên hệ và đồng bộ xong các Nhóm!`,
+        ignored: data.length - contactsToInsert.length,
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
